@@ -12,8 +12,11 @@
 
 #pragma mark- _CLImageEditorViewController
 
+static const CGFloat kNavBarHeight = 44.0f;
+static const CGFloat kMenuBarHeight = 80.0f;
+
 @interface _CLImageEditorViewController()
-<CLImageToolProtocol>
+<CLImageToolProtocol, UINavigationBarDelegate>
 @property (nonatomic, strong) CLImageToolBase *currentTool;
 @property (nonatomic, strong, readwrite) CLImageToolInfo *toolInfo;
 @property (nonatomic, strong) UIImageView *targetImageView;
@@ -76,27 +79,43 @@
 
 #pragma mark- Custom initialization
 
+- (UIBarButtonItem*)createDoneButton
+{
+    UIBarButtonItem *rightBarButtonItem = nil;
+    NSString *doneBtnTitle = [CLImageEditorTheme localizedString:@"CLImageEditor_DoneBtnTitle" withDefault:nil];
+    
+    if(![doneBtnTitle isEqualToString:@"CLImageEditor_DoneBtnTitle"]){
+        rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:doneBtnTitle style:UIBarButtonItemStyleDone target:self action:@selector(pushedFinishBtn:)];
+    }
+    else{
+        rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(pushedFinishBtn:)];
+    }
+    return rightBarButtonItem;
+}
+
 - (void)initNavigationBar
 {
-    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(pushedFinishBtn:)];
+    self.navigationItem.rightBarButtonItem = [self createDoneButton];
     [self.navigationController setNavigationBarHidden:NO animated:NO];
     
     if(_navigationBar==nil){
         UINavigationItem *navigationItem  = [[UINavigationItem alloc] init];
         navigationItem.leftBarButtonItem  = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemCancel target:self action:@selector(pushedCloseBtn:)];
-        navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(pushedFinishBtn:)];
+        navigationItem.rightBarButtonItem = [self createDoneButton];
         
         CGFloat dy = ([UIDevice iosVersion]<7) ? 0 : MIN([UIApplication sharedApplication].statusBarFrame.size.height, [UIApplication sharedApplication].statusBarFrame.size.width);
         
-        UINavigationBar *navigationBar = [[UINavigationBar alloc] initWithFrame:CGRectMake(0, dy, self.view.width, 44)];
+        UINavigationBar *navigationBar = [[UINavigationBar alloc] initWithFrame:CGRectMake(0, dy, self.view.width, kNavBarHeight)];
         [navigationBar pushNavigationItem:navigationItem animated:NO];
         navigationBar.delegate = self;
         
         if(self.navigationController){
             [self.navigationController.view addSubview:navigationBar];
+            [_CLImageEditorViewController setConstraintsLeading:@0 trailing:@0 top:@(dy) bottom:nil height:@(kNavBarHeight) width:nil parent:self.navigationController.view child:navigationBar peer:nil];
         }
         else{
             [self.view addSubview:navigationBar];
+            [_CLImageEditorViewController setConstraintsLeading:@0 trailing:@0 top:@(dy) bottom:nil height:@(kNavBarHeight) width:nil parent:self.view child:navigationBar peer:nil];
         }
         _navigationBar = navigationBar;
     }
@@ -118,7 +137,14 @@
 - (void)initMenuScrollView
 {
     if(self.menuView==nil){
-        UIScrollView *menuScroll = [[UIScrollView alloc] initWithFrame:CGRectMake(0, 0, self.view.width, 80)];
+        UIScrollView *menuScroll = [[UIScrollView alloc] initWithFrame:CGRectMake(0, 0, self.view.width, kMenuBarHeight)];
+        
+        // Adjust for iPhone X
+        if (@available(iOS 11.0, *)) {
+            UIEdgeInsets theInsets = [UIApplication sharedApplication].keyWindow.rootViewController.view.safeAreaInsets;
+            menuScroll.height += theInsets.bottom;
+        }
+        
         menuScroll.top = self.view.height - menuScroll.height;
         menuScroll.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
         menuScroll.showsHorizontalScrollIndicator = NO;
@@ -126,6 +152,7 @@
         
         [self.view addSubview:menuScroll];
         self.menuView = menuScroll;
+        [_CLImageEditorViewController setConstraintsLeading:@0 trailing:@0 top:nil bottom:@0 height:@(menuScroll.height) width:nil parent:self.view child:menuScroll peer:nil];
     }
     self.menuView.backgroundColor = [CLImageEditorTheme toolbarColor];
 }
@@ -156,7 +183,101 @@
         
         [self.view insertSubview:imageScroll atIndex:0];
         _scrollView = imageScroll;
+        [_CLImageEditorViewController setConstraintsLeading:@0 trailing:@0 top:@(y) bottom:@(-_menuView.height) height:nil width:nil parent:self.view child:imageScroll peer:nil];
     }
+}
+
++(NSArray <NSLayoutConstraint *>*)setConstraintsLeading:(NSNumber *)leading
+                                               trailing:(NSNumber *)trailing
+                                                    top:(NSNumber *)top
+                                                 bottom:(NSNumber *)bottom
+                                                 height:(NSNumber *)height
+                                                  width:(NSNumber *)width
+                                                 parent:(UIView *)parent
+                                                  child:(UIView *)child
+                                                   peer:(UIView *)peer
+{
+    NSMutableArray <NSLayoutConstraint *>*constraints = [NSMutableArray new];
+    //Trailing
+    if (trailing) {
+        NSLayoutConstraint *trailingConstraint = [NSLayoutConstraint
+                                                  constraintWithItem:child
+                                                  attribute:NSLayoutAttributeTrailing
+                                                  relatedBy:NSLayoutRelationEqual
+                                                  toItem:(peer ?: parent)
+                                                  attribute:NSLayoutAttributeTrailing
+                                                  multiplier:1.0f
+                                                  constant:trailing.floatValue];
+        [parent addConstraint:trailingConstraint];
+        [constraints addObject:trailingConstraint];
+    }
+    //Leading
+    if (leading) {
+        NSLayoutConstraint *leadingConstraint = [NSLayoutConstraint
+                                                 constraintWithItem:child
+                                                 attribute:NSLayoutAttributeLeading
+                                                 relatedBy:NSLayoutRelationEqual
+                                                 toItem:(peer ?: parent)
+                                                 attribute:NSLayoutAttributeLeading
+                                                 multiplier:1.0f
+                                                 constant:leading.floatValue];
+        [parent addConstraint:leadingConstraint];
+        [constraints addObject:leadingConstraint];
+    }
+    //Bottom
+    if (bottom) {
+        NSLayoutConstraint *bottomConstraint = [NSLayoutConstraint
+                                                constraintWithItem:child
+                                                attribute:NSLayoutAttributeBottom
+                                                relatedBy:NSLayoutRelationEqual
+                                                toItem:(peer ?: parent)
+                                                attribute:NSLayoutAttributeBottom
+                                                multiplier:1.0f
+                                                constant:bottom.floatValue];
+        [parent addConstraint:bottomConstraint];
+        [constraints addObject:bottomConstraint];
+    }
+    //Top
+    if (top) {
+        NSLayoutConstraint *topConstraint = [NSLayoutConstraint
+                                             constraintWithItem:child
+                                             attribute:NSLayoutAttributeTop
+                                             relatedBy:NSLayoutRelationEqual
+                                             toItem:(peer ?: parent)
+                                             attribute:NSLayoutAttributeTop
+                                             multiplier:1.0f
+                                             constant:top.floatValue];
+        [parent addConstraint:topConstraint];
+        [constraints addObject:topConstraint];
+    }
+    //Height
+    if (height) {
+        NSLayoutConstraint *heightConstraint = [NSLayoutConstraint
+                                                constraintWithItem:child
+                                                attribute:NSLayoutAttributeHeight
+                                                relatedBy:NSLayoutRelationEqual
+                                                toItem:nil
+                                                attribute:NSLayoutAttributeNotAnAttribute
+                                                multiplier:1.0f
+                                                constant:height.floatValue];
+        [child addConstraint:heightConstraint];
+        [constraints addObject:heightConstraint];
+    }
+    //Width
+    if (width) {
+        NSLayoutConstraint *widthConstraint = [NSLayoutConstraint
+                                               constraintWithItem:child
+                                               attribute:NSLayoutAttributeWidth
+                                               relatedBy:NSLayoutRelationEqual
+                                               toItem:nil
+                                               attribute:NSLayoutAttributeNotAnAttribute
+                                               multiplier:1.0f
+                                               constant:width.floatValue];
+        [child addConstraint:widthConstraint];
+        [constraints addObject:widthConstraint];
+    }
+    child.translatesAutoresizingMaskIntoConstraints = NO;
+    return constraints;
 }
 
 #pragma mark-
@@ -196,7 +317,7 @@
     [self initMenuScrollView];
     [self initImageScrollView];
     
-    [self setMenuView];
+    [self refreshToolSettings];
     
     if(_imageView==nil){
         _imageView = [UIImageView new];
@@ -213,6 +334,8 @@
 
 - (void)viewWillAppear:(BOOL)animated
 {
+    [super viewWillAppear:animated];
+    
     if(self.targetImageView){
         [self expropriateImageView];
     }
@@ -378,7 +501,7 @@
 
 + (NSString*)defaultTitle
 {
-    return NSLocalizedStringWithDefaultValue(@"CLImageEditor_DefaultTitle", nil, [CLImageEditorTheme bundle], @"Edit", @"");
+    return [CLImageEditorTheme localizedString:@"CLImageEditor_DefaultTitle" withDefault:@"Edit"];
 }
 
 + (BOOL)isAvailable
@@ -398,20 +521,35 @@
 
 #pragma mark- 
 
-- (void)setMenuView
+- (void)refreshToolSettings
 {
+    for(UIView *sub in _menuView.subviews){ [sub removeFromSuperview]; }
+    
     CGFloat x = 0;
     CGFloat W = 70;
     CGFloat H = _menuView.height;
+    
+    int toolCount = 0;
+    CGFloat padding = 0;
+    for(CLImageToolInfo *info in self.toolInfo.sortedSubtools){
+        if(info.available){
+            toolCount++;
+        }
+    }
+    
+    CGFloat diff = _menuView.frame.size.width - toolCount * W;
+    if (0<diff && diff<2*W) {
+        padding = diff/(toolCount+1);
+    }
     
     for(CLImageToolInfo *info in self.toolInfo.sortedSubtools){
         if(!info.available){
             continue;
         }
         
-        CLToolbarMenuItem *view = [CLImageEditorTheme menuItemWithFrame:CGRectMake(x, 0, W, H) target:self action:@selector(tappedMenuView:) toolInfo:info];
+        CLToolbarMenuItem *view = [CLImageEditorTheme menuItemWithFrame:CGRectMake(x+padding, 0, W, H) target:self action:@selector(tappedMenuView:) toolInfo:info];
         [_menuView addSubview:view];
-        x += W;
+        x += W+padding;
     }
     _menuView.contentSize = CGSizeMake(MAX(x, _menuView.frame.size.width+1), 0);
 }
@@ -468,12 +606,31 @@
 
 - (BOOL)shouldAutorotate
 {
-    return NO;
+    return (_currentTool == nil);
 }
 
+#if __IPHONE_OS_VERSION_MAX_ALLOWED < 90000
 - (NSUInteger)supportedInterfaceOrientations
+#else
+- (UIInterfaceOrientationMask)supportedInterfaceOrientations
+#endif
 {
-    return UIInterfaceOrientationMaskPortrait;
+    return (_currentTool == nil
+            ? UIInterfaceOrientationMaskAll
+            : (UIInterfaceOrientationMask)[UIApplication sharedApplication].statusBarOrientation);
+}
+
+-(void)viewDidLayoutSubviews
+{
+    [super viewDidLayoutSubviews];
+    [self resetImageViewFrame];
+    [self refreshToolSettings];
+    [self scrollViewDidZoom:_scrollView];
+}
+
+- (UIStatusBarStyle)preferredStatusBarStyle
+{
+    return [[CLImageEditorTheme theme] statusBarStyle];
 }
 
 #pragma mark- Tool actions
@@ -485,17 +642,17 @@
         _currentTool = currentTool;
         [_currentTool setup];
         
-        [self swapToolBarWithEditting:(_currentTool!=nil)];
+        [self swapToolBarWithEditing:(_currentTool!=nil)];
     }
 }
 
 #pragma mark- Menu actions
 
-- (void)swapMenuViewWithEditting:(BOOL)editting
+- (void)swapMenuViewWithEditing:(BOOL)editing
 {
     [UIView animateWithDuration:kCLImageToolAnimationDuration
                      animations:^{
-                         if(editting){
+                         if(editing){
                              _menuView.transform = CGAffineTransformMakeTranslation(0, self.view.height-_menuView.top);
                          }
                          else{
@@ -505,13 +662,13 @@
      ];
 }
 
-- (void)swapNavigationBarWithEditting:(BOOL)editting
+- (void)swapNavigationBarWithEditing:(BOOL)editing
 {
     if(self.navigationController==nil){
         return;
     }
     
-    if(editting){
+    if(editing){
         _navigationBar.hidden = NO;
         _navigationBar.transform = CGAffineTransformMakeTranslation(0, -_navigationBar.height);
         
@@ -536,15 +693,15 @@
     }
 }
 
-- (void)swapToolBarWithEditting:(BOOL)editting
+- (void)swapToolBarWithEditing:(BOOL)editing
 {
-    [self swapMenuViewWithEditting:editting];
-    [self swapNavigationBarWithEditting:editting];
+    [self swapMenuViewWithEditing:editing];
+    [self swapNavigationBarWithEditing:editing];
     
     if(self.currentTool){
         UINavigationItem *item  = [[UINavigationItem alloc] initWithTitle:self.currentTool.toolInfo.title];
-        item.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:NSLocalizedStringWithDefaultValue(@"CLImageEditor_OKBtnTitle", nil, [CLImageEditorTheme bundle], @"OK", @"") style:UIBarButtonItemStyleDone target:self action:@selector(pushedDoneBtn:)];
-        item.leftBarButtonItem  = [[UIBarButtonItem alloc] initWithTitle:NSLocalizedStringWithDefaultValue(@"CLImageEditor_BackBtnTitle", nil, [CLImageEditorTheme bundle], @"Back", @"") style:UIBarButtonItemStylePlain target:self action:@selector(pushedCancelBtn:)];
+        item.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:[CLImageEditorTheme localizedString:@"CLImageEditor_OKBtnTitle" withDefault:@"OK"] style:UIBarButtonItemStyleDone target:self action:@selector(pushedDoneBtn:)];
+        item.leftBarButtonItem  = [[UIBarButtonItem alloc] initWithTitle:[CLImageEditorTheme localizedString:@"CLImageEditor_BackBtnTitle" withDefault:@"Back"] style:UIBarButtonItemStylePlain target:self action:@selector(pushedCancelBtn:)];
         
         [_navigationBar pushNavigationItem:item animated:(self.navigationController==nil)];
     }
@@ -596,8 +753,9 @@
     
     [self.currentTool executeWithCompletionBlock:^(UIImage *image, NSError *error, NSDictionary *userInfo) {
         if(error){
-            UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"Error" message:error.localizedDescription delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil];
-            [alert show];
+            UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Error" message:error.localizedDescription preferredStyle:UIAlertControllerStyleAlert];
+            [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+            [self presentViewController:alert animated:YES completion:nil];
         }
         else if(image){
             _originalImage = image;
@@ -629,8 +787,14 @@
 - (void)pushedFinishBtn:(id)sender
 {
     if(self.targetImageView==nil){
-        if([self.delegate respondsToSelector:@selector(imageEditor:didFinishEdittingWithImage:)]){
+        if([self.delegate respondsToSelector:@selector(imageEditor:didFinishEditingWithImage:)]){
+            [self.delegate imageEditor:self didFinishEditingWithImage:_originalImage];
+        }
+        else if([self.delegate respondsToSelector:@selector(imageEditor:didFinishEdittingWithImage:)]){
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
             [self.delegate imageEditor:self didFinishEdittingWithImage:_originalImage];
+#pragma clang diagnostic pop
         }
         else{
             [self dismissViewControllerAnimated:YES completion:nil];
